@@ -1,10 +1,19 @@
 from fastapi import FastAPI
-from pydantic import BaseModel # NEW: Helps us define data structures
+from pydantic import BaseModel
 import uvicorn
+import sqlite3  #built-in SQL database engine
 
 app = FastAPI()
 
-# define "Secret" should look like
+# Create the database and 'secrets' table if they don't exist
+def init_db():
+    conn = sqlite3.connect("vault.db")
+    conn.execute("CREATE TABLE IF NOT EXISTS secrets (id INTEGER PRIMARY KEY, title TEXT, content TEXT)")
+    conn.commit()
+    conn.close()
+
+init_db() # Run every time the server starts
+
 class SecretItem(BaseModel):
     title: str
     content: str
@@ -13,7 +22,6 @@ class SecretItem(BaseModel):
 def read_root():
     return {"message": "Secure Vault API is running!"}
 
-# A POST route catches incoming data
 @app.post("/secrets/")
 def create_secret(item: SecretItem):
     return {"status": "success", "received_title": item.title}
