@@ -1,9 +1,19 @@
-from fastapi import FastAPI
+
+from fastapi import FastAPI, Depends, HTTPException, Security
+from fastapi.security import APIKeyHeader
 from pydantic import BaseModel
 import uvicorn
 import sqlite3
 
 app = FastAPI()
+
+#Define our security lock (Checks for 'X-Vault-Token' in headers)
+api_key_header = APIKeyHeader(name="X-Vault-Token")
+
+def verify_token(api_key: str = Security(api_key_header)):
+    if api_key != "supersecret123":
+        raise HTTPException(status_code=403, detail="Access Denied: Invalid Token")
+    return api_key
 
 def init_db():
     conn = sqlite3.connect("vault.db")
@@ -31,15 +41,14 @@ def create_secret(item: SecretItem):
     conn.close()
     return {"status": "success", "id": inserted_id, "title": item.title}
 
-#  Retrieve data from the database
+# Injected the security dependency here!
 @app.get("/secrets/")
-def get_secrets():
+def get_secrets(token: str = Depends(verify_token)):
     conn = sqlite3.connect("vault.db")
     cursor = conn.cursor()
     cursor.execute("SELECT id, title, content FROM secrets")
     rows = cursor.fetchall()
     conn.close()
-    # Convert raw SQL data into a clean list of dictionaries
     return [{"id": row[0], "title": row[1], "content": row[2]} for row in rows]
 
 if __name__ == "__main__":
