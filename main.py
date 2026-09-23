@@ -3,13 +3,18 @@ from fastapi.security import APIKeyHeader
 from pydantic import BaseModel
 import uvicorn
 import sqlite3
+import os                            
+from dotenv import load_dotenv      
+
+load_dotenv()                        #Loads hidden variables from .env
 
 app = FastAPI()
 
 api_key_header = APIKeyHeader(name="X-Vault-Token")
 
 def verify_token(api_key: str = Security(api_key_header)):
-    if api_key != "supersecret123":
+    # Fetches key securely from the system environment
+    if api_key != os.getenv("VAULT_API_KEY"):
         raise HTTPException(status_code=403, detail="Access Denied: Invalid Token")
     return api_key
 
