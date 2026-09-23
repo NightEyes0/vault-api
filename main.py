@@ -3,17 +3,20 @@ from fastapi.security import APIKeyHeader
 from pydantic import BaseModel
 import uvicorn
 import sqlite3
-import os                            
-from dotenv import load_dotenv      
+import os
+from dotenv import load_dotenv
+from cryptography.fernet import Fernet   #  encryption engine
 
-load_dotenv()                        #Loads hidden variables from .env
+load_dotenv()
+
+#Initialize the cipher suite using the hidden key
+cipher = Fernet(os.getenv("VAULT_ENCRYPTION_KEY"))
 
 app = FastAPI()
 
 api_key_header = APIKeyHeader(name="X-Vault-Token")
 
 def verify_token(api_key: str = Security(api_key_header)):
-    # Fetches key securely from the system environment
     if api_key != os.getenv("VAULT_API_KEY"):
         raise HTTPException(status_code=403, detail="Access Denied: Invalid Token")
     return api_key
@@ -34,12 +37,15 @@ class SecretItem(BaseModel):
 def read_root():
     return {"message": "Secure Vault API is running!"}
 
-#Locked down POST with Depends(verify_token)
 @app.post("/secrets/")
 def create_secret(item: SecretItem, token: str = Depends(verify_token)):
+    # NEW: Encrypt the text into unreadable bytes, then convert to a storable string
+    encrypted_content = cipher.encrypt(item.content.encode()).decode()
+    
     conn = sqlite3.connect("vault.db")
     cursor = conn.cursor()
-    cursor.execute("INSERT INTO secrets (title, content) VALUES (?, ?)", (item.title, item.content))
+    #Insert the encrypted_content instead of the raw content
+    cursor.execute("INSERT INTO secrets (title, content) VALUES (?, ?)", (item.title, encrypted_content))
     conn.commit()
     inserted_id = cursor.lastrowid
     conn.close()
@@ -52,16 +58,23 @@ def get_secrets(token: str = Depends(verify_token)):
     cursor.execute("SELECT id, title, content FROM secrets")
     rows = cursor.fetchall()
     conn.close()
-    return [{"id": row[0], "title": row[1], "content": row[2]} for row in rows]
+    
+    #Decrypt the content back into readable text before returning it to the user
+    return [
+        {
+            "id": row[0], 
+            "title": row[1], 
+            "content": cipher.decrypt(row[2].encode()).decode()
+        } for row in rows
+    ]
 
-# Delete endpoint with a Path Parameter and Security
 @app.delete("/secrets/{secret_id}")
 def delete_secret(secret_id: int, token: str = Depends(verify_token)):
     conn = sqlite3.connect("vault.db")
     cursor = conn.cursor()
     cursor.execute("DELETE FROM secrets WHERE id = ?", (secret_id,))
     conn.commit()
-    deleted_count = cursor.rowcount # Checks if a row was actually deleted
+    deleted_count = cursor.rowcount
     conn.close()
     
     if deleted_count == 0:
