@@ -39,7 +39,7 @@ def read_root():
 
 @app.post("/secrets/")
 def create_secret(item: SecretItem, token: str = Depends(verify_token)):
-    # NEW: Encrypt the text into unreadable bytes, then convert to a storable string
+    # Encrypt the text into unreadable bytes, then convert to a storable string
     encrypted_content = cipher.encrypt(item.content.encode()).decode()
     
     conn = sqlite3.connect("vault.db")
